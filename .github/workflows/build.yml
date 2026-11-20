@@ -1,0 +1,79 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: 构建 macOS App（通用二进制）
+    runs-on: macos-14
+    timeout-minutes: 40
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 环境信息
+        run: |
+          swift --version
+          xcodebuild -version
+          sw_vers
+
+      - name: 缓存 SwiftPM 依赖
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+          key: ${{ runner.os }}-swiftpm-${{ hashFiles('Package.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-swiftpm-
+
+      - name: 单元测试
+        run: swift test --parallel
+
+      - name: 打包 .app / DMG / ZIP
+        run: ./scripts/package.sh
+
+      - name: 产物清单
+        run: |
+          ls -lh dist
+          lipo -info dist/BandizipMac.app/Contents/MacOS/BandizipMac
+          codesign -dv dist/BandizipMac.app 2>&1 | head -5
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: BandizipMac-${{ github.sha }}
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: 发布 Release（仅在打 tag 时）
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Bandizip for Mac ${{ github.ref_name }}
+          draft: false
+          generate_release_notes: true
+          files: |
+            dist/*.dmg
+            dist/*.zip
+            dist/SHA256SUMS.txt
