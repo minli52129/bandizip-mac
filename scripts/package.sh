@@ -30,11 +30,34 @@ rm -rf "$DIST" "$BUILD"
 mkdir -p "$DIST" "$BUILD"
 
 # ---------- 编译 ----------
-echo "==> 编译通用二进制（arm64 + x86_64）"
-swift build -c release --arch arm64 --arch x86_64
+# 某些受限环境（沙箱 / 无窗口服务的 CI 容器）不允许 SwiftPM 调用 sandbox-exec，
+# 这时自动退回到 --disable-sandbox 再试一次。
+swift_build() {
+  if swift build "$@" 2>"$BUILD/swift-build.log"; then
+    return 0
+  fi
+  if grep -q "sandbox_apply" "$BUILD/swift-build.log" 2>/dev/null; then
+    echo "!! 当前环境禁止 sandbox-exec，改用 --disable-sandbox 重试"
+    swift build --disable-sandbox "$@"
+  else
+    cat "$BUILD/swift-build.log" >&2
+    return 1
+  fi
+}
 
-BIN_DIR="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path | tail -n 1)"
-if [ ! -x "$BIN_DIR/$APP_NAME" ]; then
+echo "==> 编译 Release"
+BIN_DIR=""
+if swift_build -c release --arch arm64 --arch x86_64; then
+  BIN_DIR="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path 2>/dev/null | tail -n 1 || true)"
+  echo "==> 通用二进制（arm64 + x86_64）"
+else
+  # 只有 Command Line Tools、没有完整 Xcode 时，xcbuild 不存在，无法交叉编译
+  echo "!! 无法构建通用二进制（通常是没装完整 Xcode），改为构建当前架构"
+  swift_build -c release
+  BIN_DIR="$(swift build -c release --show-bin-path 2>/dev/null | tail -n 1 || true)"
+fi
+
+if [ -z "${BIN_DIR:-}" ] || [ ! -x "$BIN_DIR/$APP_NAME" ]; then
   for candidate in ".build/apple/Products/Release" ".build/release"; do
     if [ -x "$candidate/$APP_NAME" ]; then
       BIN_DIR="$candidate"

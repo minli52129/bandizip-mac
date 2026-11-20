@@ -48,6 +48,8 @@
 > git tag v1.0.0 && git push origin v1.0.0
 > ```
 
+> ⚠️ **macOS runner 的计费限制**：GitHub 免费账户在「私有仓库」上无法调度 macOS runner（任务会被秒取消，`runner_name` 为空、没有任何 step 执行）；公开仓库或配置了支付方式/额度后才可以。如果 CI 里只有 macOS job 被取消、Linux job 正常，基本就是这个原因，去 **Settings → Billing** 处理即可，工作流本身不用改。
+
 ### 首次打开被 Gatekeeper 拦下怎么办
 
 安装包是 ad-hoc 签名（没有 Apple 开发者证书，也没有公证），所以首次打开会提示「无法验证开发者」：
@@ -108,7 +110,7 @@ swift run BandizipMac  # 直接跑界面
 ./scripts/package.sh   # 本机出 DMG/ZIP
 ```
 
-需要 macOS 13+ 与 Swift 5.9+。
+需要 macOS 13+ 与 Swift 5.9+。`package.sh` 默认交叉编译 arm64 + x86_64 通用二进制；如果本机只装了 Command Line Tools（没有完整 Xcode，`xcbuild` 不可用），会自动退化为「只构建当前架构」，DMG 依然是可用的。
 
 ## 支持情况与已知限制
 
